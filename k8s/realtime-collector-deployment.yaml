@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: realtime-collector
+  namespace: default
+  labels:
+    app: realtime-collector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: realtime-collector
+  template:
+    metadata:
+      labels:
+        app: realtime-collector
+    spec:
+      containers:
+      - name: realtime-collector
+        image: realtime-collector:v1
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: KAFKA_BROKERS
+          valueFrom:
+            configMapKeyRef:
+              name: fms-config
+              key: KAFKA_BROKERS
+        - name: KAFKA_TOPIC
+          valueFrom:
+            configMapKeyRef:
+              name: fms-config
+              key: KAFKA_TOPIC
+        - name: KAFKA_GROUP_ID
+          value: "realtime-collector"
+        - name: MINIO_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: fms-config
+              key: MINIO_ENDPOINT
+        - name: MINIO_BUCKET
+          valueFrom:
+            configMapKeyRef:
+              name: fms-config
+              key: MINIO_BUCKET
+        - name: MINIO_SECURE
+          valueFrom:
+            configMapKeyRef:
+              name: fms-config
+              key: MINIO_SECURE
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: fms-secrets
+              key: MINIO_ACCESS_KEY
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: fms-secrets
+              key: MINIO_SECRET_KEY
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import sys; sys.exit(0)"
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import sys; sys.exit(0)"
+          initialDelaySeconds: 10
+          periodSeconds: 10
+      restartPolicy: Always
