@@ -43,3 +43,21 @@ services:
     # 프로파일을 사용하여 수동 실행 가능하게 설정
     profiles:
       - backfill
+
+
+  backfill-scheduler:
+    build: ./backfill-loader
+    command: python app.py --mode scheduler
+    environment:
+      # 외부 Kafka/MinIO 서버 설정
+      KAFKA_BROKERS: "10.79.1.1:9094"
+      KAFKA_TOPIC: "fms-temphum"
+      KAFKA_GROUP_ID: "backfill-scheduler"
+      MINIO_ENDPOINT: "10.79.1.0:9000"
+      MINIO_ACCESS_KEY: "gxQHjrQB9JHKtlIlSYNe"
+      MINIO_SECRET_KEY: "Vjsd5McgcZQ9NJ3NS9sThl7gIo1ZXVRfNfLwVJ3N"
+      MINIO_BUCKET: "fms-temphum"
+      MINIO_SECURE: "false"
+    restart: unless-stopped
+    volumes:
+      - ./logs:/app/logs

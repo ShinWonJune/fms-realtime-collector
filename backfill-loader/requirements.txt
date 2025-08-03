@@ -1,0 +1,7 @@
+numpy==1.21.6
+pandas==1.5.3
+pyarrow==10.0.1
+kafka-python==2.0.2
+minio==7.1.17
+argparse
+
