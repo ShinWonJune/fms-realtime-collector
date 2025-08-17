@@ -484,10 +484,10 @@ class BackfillLoader:
                         stats_str = ", ".join([f"P{p}:{c}" for p, c in sorted(partition_stats.items())])
                         logger.info(f"Partition stats: {stats_str}")
                 
-                # incremental 모드에서는 제한된 수만 수집
-                if self.mode == 'incremental' and len(all_data) >= 100000:
-                    logger.info(f"Incremental mode: Collected {len(all_data)} valid messages, stopping")
-                    break
+                # # incremental 모드에서는 제한된 수만 수집
+                # if self.mode == 'incremental' and len(all_data) >= 100000:
+                #     logger.info(f"Incremental mode: Collected {len(all_data)} valid messages, stopping")
+                #     break
                     
         except Exception as e:
             if "timeout" in str(e).lower():
