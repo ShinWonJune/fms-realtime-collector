@@ -19,6 +19,10 @@ import time
 
 사용 명령어
 docker-compose run --rm backfill-loader python app.py --mode incremental
+***incremental 주의사항***
+4일이 지나면 오래된 데이터 부터 누락발생. offset이 뒤로 밀려서 그런듯.
+3일에 한번씩 실행 권장
+
 docker-compose run --rm backfill-loader python app.py --mode scheduler
 docker-compose run --rm backfill-loader python app.py --mode continue --from-date 2023-10-01
 docker-compose run --rm backfill-loader python app.py --mode fresh
