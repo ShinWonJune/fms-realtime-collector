@@ -19,16 +19,14 @@ import time
 
 사용 명령어
 docker-compose run --rm backfill-loader python app.py --mode incremental
-***incremental 주의사항***
-4일이 지나면 오래된 데이터 부터 누락발생. offset이 뒤로 밀려서 그런듯.
-3일에 한번씩 실행 권장
+    ***incremental 주의사항***
+    - 4일이 지나면 오래된 데이터 부터 누락발생. offset이 뒤로 밀려서 그런듯.
+    - 3일에 한번씩 실행 권장
 
-docker-compose run --rm backfill-loader python app.py --mode scheduler
 docker-compose run --rm backfill-loader python app.py --mode continue --from-date 2023-10-01
 docker-compose run --rm backfill-loader python app.py --mode fresh
 
 - incremental 모드에서는 마지막 커밋된 오프셋부터 시작
-- scheduler 모드에서는 3일에 한번씩 자정에 incremental mode 실행
 - continue 모드에서는 from_date가 지정된 경우 해당 날짜부터 시작, 지정되지 않으면 마지막 커밋된 오프셋부터 시작
 - fresh 모드에서는 항상 처음부터 시작
 
@@ -602,137 +600,14 @@ class BackfillLoader:
                 self.consumer.close()
                 logger.info("Kafka consumer closed")
 
-class BackfillScheduler:
-    def __init__(self):
-        self.is_running = False
-        self.last_run = None
-        self.job_count = 0
-        
-        # 종료 신호 처리
-        signal.signal(signal.SIGINT, self._signal_handler)
-        signal.signal(signal.SIGTERM, self._signal_handler)
-        self.should_stop = False
-        
-    def _signal_handler(self, signum, frame):
-        """종료 신호 처리 (Ctrl+C, Docker stop 등)"""
-        logger.info(f"Received signal {signum}, gracefully shutting down...")
-        self.should_stop = True
-        
-    def run_incremental_job(self):
-        """incremental 모드 백필 작업 실행"""
-        if self.is_running:
-            logger.warning("Previous job is still running, skipping this execution")
-            return
-            
-        try:
-            self.is_running = True
-            self.job_count += 1
-            start_time = datetime.now() + timedelta(hours=9) # KST로 변환
-            
-            logger.info("🚀 " + "=" * 60)
-            logger.info(f"Starting scheduled incremental job #{self.job_count}")
-            logger.info(f"Start time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
-            logger.info("=" * 64)
-            
-            # BackfillLoader 인스턴스 생성 및 실행
-            loader = BackfillLoader(mode='incremental')
-            loader.run()
-            duration_time = datetime.now() + timedelta(hours=9)  # KST로 변환
-            duration = (duration_time - start_time).total_seconds()
-            self.last_run = start_time
-            
-            logger.info("✅ " + "=" * 60)
-            logger.info(f"Scheduled incremental job #{self.job_count} completed successfully")
-            logger.info(f"Duration: {duration:.1f} seconds")
-            logger.info("=" * 64)
-            
-        except Exception as e:
-            logger.error(f"❌ Error in scheduled job #{self.job_count}: {e}")
-            logger.exception("Full error traceback:")
-        finally:
-            self.is_running = False
-    
-    def get_next_run_time(self):
-        """다음 실행 시간 계산 (3일 후 자정)"""
-        now = datetime.now() + timedelta(hours=9)  # KST로 변환
-        # 내일 자정
-        tomorrow_midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-        # 3일 후 자정 (내일부터 2일 후)
-        next_run = tomorrow_midnight # test 하루 후 실행
-        # next_run = tomorrow_midnight + timedelta(days=2)  # 총 3일 후
-        # next_run = now  + timedelta(hours=2) # 테스트용 2시간 후
-        return next_run
-    
-    def start_scheduler(self):
-        """정확한 시간에 실행하는 스케줄러"""
-        KST_NOW = datetime.now() + timedelta(hours=9)  # KST로 변환
-        logger.info("🎯 Starting Precise Scheduler for Backfill Incremental")
-        logger.info("Will run incremental job every 3 days at midnight (00:00)")
-        logger.info(f"Scheduler started at: {KST_NOW.strftime('%Y-%m-%d %H:%M:%S')}")
-
-        while not self.should_stop:
-            try:
-                # 다음 실행 시간 계산
-                next_run_time = self.get_next_run_time()
-                now = datetime.now() + timedelta(hours=9)  # KST로 변환
-                
-                # 대기 시간 계산
-                sleep_seconds = (next_run_time - now).total_seconds()
-                
-                if sleep_seconds > 0:
-                    sleep_duration = timedelta(seconds=int(sleep_seconds))
-                    
-                    logger.info("💤 Sleeping until next scheduled run...")
-                    logger.info(f"   Current time: {now.strftime('%Y-%m-%d %H:%M:%S')}")
-                    logger.info(f"   Next run: {next_run_time.strftime('%Y-%m-%d %H:%M:%S')}")
-                    logger.info(f"   Sleep duration: {sleep_duration}")
-                    logger.info("   Press Ctrl+C to stop the scheduler")
-                    logger.info("-" * 50)
-                    
-                    # 인터럽트 가능한 sleep (큰 시간을 작은 단위로 나누어 체크)
-                    remaining_seconds = sleep_seconds
-                    while remaining_seconds > 0 and not self.should_stop:
-                        # 최대 1시간씩 잠들고 중간에 체크
-                        sleep_chunk = min(remaining_seconds, 3600)  # 1시간 또는 남은 시간
-                        time.sleep(sleep_chunk)
-                        remaining_seconds -= sleep_chunk
-                        
-                        # 24시간마다 중간 상태 로그 (선택사항)
-                        if remaining_seconds > 0 and int(remaining_seconds) % (24 * 3600) == 0:
-                            days_left = int(remaining_seconds / (24 * 3600))
-                            logger.info(f"⏰ Still sleeping... {days_left} days left until next run")
-                
-                # 종료 신호가 왔으면 루프 탈출
-                if self.should_stop:
-                    break
-                
-                # 시간이 되면 작업 실행
-                logger.info(f"⏰ Scheduled time reached! Current time: {KST_NOW.strftime('%Y-%m-%d %H:%M:%S')}")
-                self.run_incremental_job()
-                
-            except KeyboardInterrupt:
-                logger.info("👋 Scheduler interrupted by user")
-                break
-            except Exception as e:
-                logger.error(f"❌ Scheduler error: {e}")
-                logger.info("⏳ Waiting 5 minutes before retry...")
-                
-                # 5분 대기 (인터럽트 가능)
-                for _ in range(300):  # 5분 = 300초
-                    if self.should_stop:
-                        break
-                    time.sleep(1)
-        
-        logger.info("🔚 Precise Scheduler stopped")
-
 def parse_arguments():
     """명령행 인수 파싱"""
     parser = argparse.ArgumentParser(description='Backfill Loader - Kafka to MinIO data loader')
     
     parser.add_argument('--mode', 
-                        choices=['fresh', 'incremental', 'continue', 'scheduler'], 
+                        choices=['fresh', 'incremental', 'continue'], 
                         default='fresh',
-                        help='Execution mode: fresh (start from beginning), incremental (from last offset), continue (from last offset or beginning), scheduler (run as a scheduled backfill job for every 3days)')
+                        help='Execution mode: fresh (start from beginning), incremental (from last offset), continue (from last offset or beginning)')
 
     parser.add_argument('--from-date',
                         type=str,
@@ -803,12 +678,6 @@ if __name__ == "__main__":
         except ValueError:
             logger.error("Invalid from-date format. Use YYYY-MM-DD")
             sys.exit(1)
-
-    if args.mode == 'scheduler':
-        # 스케줄러 모드
-        logger.info("Starting in scheduler mode - will run incremental mode every 3 days")
-        scheduler = BackfillScheduler()
-        scheduler.start_scheduler()
 
     # 백필 로더 실행
     logger.info(f"Starting Backfill Loader with arguments: "

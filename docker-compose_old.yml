@@ -1,34 +1,26 @@
 services:
-  # 백필 스케줄러 (3일마다 자동 실행)
-  backfill-scheduler:
-    build:
-      context: .
-      dockerfile: scheduler.Dockerfile
+  # 실시간 수집기 (외부 서버 사용)
+  realtime-collector:
+    build: ./realtime-collector
     environment:
       # 외부 Kafka/MinIO 서버 설정
       KAFKA_BROKERS: "10.79.1.1:9094"
-      KAFKA_TOPIC: "fms-temphum"
-      KAFKA_GROUP_ID: "backfill-loader"
+      KAFKA_TOPIC: "fms-data"
+      KAFKA_GROUP_ID: "realtime-collector"
       MINIO_ENDPOINT: "10.79.1.0:9000"
       MINIO_ACCESS_KEY: "gxQHjrQB9JHKtlIlSYNe"
       MINIO_SECRET_KEY: "Vjsd5McgcZQ9NJ3NS9sThl7gIo1ZXVRfNfLwVJ3N"
-      MINIO_BUCKET: "fms-temphum"
+      MINIO_BUCKET: "fms-data"
       MINIO_SECURE: "false"
-      # 스케줄러 설정
-      RUN_ON_START: "true"  # true로 설정시 시작할 때 바로 실행
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
-      interval: 300s
+      interval: 60s
       timeout: 10s
       retries: 3
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+      start_period: 120s
 
-  # 수동 백필 로더 (필요시 수동 실행)
+  # 백필 로더 (외부 서버 사용)
   backfill-loader:
     build: ./backfill-loader
     environment:
@@ -51,4 +43,3 @@ services:
     # 프로파일을 사용하여 수동 실행 가능하게 설정
     profiles:
       - backfill
-
