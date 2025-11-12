@@ -9,11 +9,11 @@ services:
       KAFKA_BROKERS: "10.79.1.1:9094"
       KAFKA_TOPIC: "fms-temphum"
       KAFKA_GROUP_ID: "backfill-loader"
-      MINIO_ENDPOINT: "10.79.1.0:9000"
-      MINIO_ACCESS_KEY: "gxQHjrQB9JHKtlIlSYNe"
-      MINIO_SECRET_KEY: "Vjsd5McgcZQ9NJ3NS9sThl7gIo1ZXVRfNfLwVJ3N"
-      MINIO_BUCKET: "fms-temphum"
-      MINIO_SECURE: "false"
+      MINIO_ENDPOINT: "https://api.minio.mobilex.kr"
+      MINIO_ACCESS_KEY: "ElQgWuV9dGLLc2VKeGAd"
+      MINIO_SECRET_KEY: "P70RNNJehlgTFL5zOpsIdRwKqZYuxINRdM1aEVBj"
+      MINIO_BUCKET: "temphum"
+      MINIO_SECURE: "true"  # https URL이므로 true로 변경
       # 스케줄러 설정
       RUN_ON_START: "true"  # true로 설정시 시작할 때 바로 실행
     restart: unless-stopped
@@ -36,11 +36,11 @@ services:
       KAFKA_BROKERS: "10.79.1.1:9094"
       KAFKA_TOPIC: "fms-temphum"
       KAFKA_GROUP_ID: "backfill-loader"
-      MINIO_ENDPOINT: "10.79.1.0:9000"
-      MINIO_ACCESS_KEY: "gxQHjrQB9JHKtlIlSYNe"
-      MINIO_SECRET_KEY: "Vjsd5McgcZQ9NJ3NS9sThl7gIo1ZXVRfNfLwVJ3N"
-      MINIO_BUCKET: "fms-temphum"
-      MINIO_SECURE: "false"
+      MINIO_ENDPOINT: "https://api.minio.mobilex.kr"
+      MINIO_ACCESS_KEY: "ElQgWuV9dGLLc2VKeGAd"
+      MINIO_SECRET_KEY: "P70RNNJehlgTFL5zOpsIdRwKqZYuxINRdM1aEVBj"
+      MINIO_BUCKET: "temphum"
+      MINIO_SECURE: "true"  # https URL이므로 true로 변경
     restart: "no"  # 백필은 한 번만 실행
     healthcheck:
       test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]

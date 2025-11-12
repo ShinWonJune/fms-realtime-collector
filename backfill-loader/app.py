@@ -165,11 +165,39 @@ class BackfillLoader:
     def _init_minio_client(self):
         """MinIO 클라이언트 초기화"""
         try:
+            # URL에서 scheme과 host 분리
+            endpoint = self.minio_endpoint
+            
+            # URL 형태인지 확인
+            if endpoint.startswith(('http://', 'https://')):
+                from urllib.parse import urlparse
+                parsed = urlparse(endpoint)
+                
+                # scheme에 따라 secure 설정 (환경변수보다 URL scheme 우선)
+                secure = parsed.scheme == 'https'
+                
+                # host만 추출 (포트는 기본값 사용)
+                host = parsed.hostname
+                if parsed.port:
+                    host = f"{parsed.hostname}:{parsed.port}"
+                    
+                logger.info(f"Parsed URL endpoint: {endpoint} -> host={host}, secure={secure}")
+                
+                # 환경변수와 URL scheme이 다르면 경고
+                if secure != self.minio_secure:
+                    logger.warning(f"MINIO_SECURE={self.minio_secure} conflicts with URL scheme. Using secure={secure} from URL.")
+                
+            else:
+                # 기존 host:port 형태
+                host = endpoint
+                secure = self.minio_secure
+                logger.info(f"Using host:port endpoint: {host}, secure={secure}")
+            
             client = Minio(
-                self.minio_endpoint,
+                host,
                 access_key=self.minio_access_key,
                 secret_key=self.minio_secret_key,
-                secure=self.minio_secure
+                secure=secure
             )
             
             # 버킷 존재 확인 및 생성
