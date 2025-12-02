@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 '''
 
 docker-compose up -d backfill-scheduler
+
+
 3일에 한번씩 docker-compose run --rm backfill-loader python app.py --mode incremental 실행
 3일에 한번씩 데이터를 kafka데이터 수집해서 minio에 적재
 
