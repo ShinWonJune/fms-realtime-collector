@@ -164,6 +164,7 @@ class BackfillLoader:
         
     def _init_minio_client(self):
         """MinIO 클라이언트 초기화"""
+        print(repr(self.minio_endpoint))
         try:
             # URL에서 scheme과 host 분리
             endpoint = self.minio_endpoint

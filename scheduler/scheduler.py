@@ -28,19 +28,23 @@ def run_backfill():
         # Docker 컨테이너 내부에서 실행
         cmd = ["python", "/app/app.py", "--mode", "incremental"]
         
-        result = subprocess.run(
+        proc = subprocess.Popen(
             cmd,
-            capture_output=True,
-            text=True,
-            cwd="/app"
+            cwd="/app",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            universal_newlines=True
         )
-        
-        if result.returncode == 0:
-            logger.info("Backfill job completed successfully")
+
+        while proc.poll() is None:
+            line = proc.stdout.readline()
+            if line:
+                logger.info(line.strip())
+
+        if proc.returncode == 0:
+            logger.info("Backfill job completed successfully", )
         else:
-            logger.error(f"Backfill job failed with return code: {result.returncode}")
-            if result.stderr:
-                logger.error(f"Error: {result.stderr}")
+            logger.error(f"Backfill job failed with return code: {proc.returncode}")
         
         logger.info("=" * 50)
         
