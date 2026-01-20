@@ -1,6 +1,6 @@
-# FMS Realtime Collector - Backfill System
+# FMS Collector - Backfill System
 
-이 프로젝트는 Kafka의 실시간 데이터를 주기적으로 수집하여 MinIO 스토리지에 Parquet 포맷으로 적재하는 백필(Backfill) 및 아카이빙 시스템입니다.
+이 프로젝트는 Kafka의 데이터를 주기적으로 수집하여 MinIO 스토리지에 Parquet 포맷으로 적재하는 백필(Backfill) 및 아카이빙 시스템입니다.
 
 주로 두 가지 핵심 파이썬 애플리케이션인 `app.py` (Backfill Loader)와 `scheduler.py` (Scheduler)로 구성되어 있습니다.
 
