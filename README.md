@@ -40,7 +40,7 @@ Backfill Loader를 정해진 주기에 따라 자동으로 실행시켜주는 �
 
 ## 전체 시스템 워크플로우
 
-1. **스케줄러 시작**: `backfill-scheduler` 컨테이너가 실행되면 `scheduler.py`가 구동됩니다.
+1. **스케줄러 시작**: `docker compose up backfill-scheduler` 명령어를 통해 `backfill-scheduler` 컨테이너가 실행되면 `scheduler.py`가 구동됩니다.
 2. **주기적 실행**: 
    - 매 3일마다(또는 `RUN_ON_START` 설정 시 즉시) 스케줄러가 깨어납니다.
    - 스케줄러는 `app.py`를 `incremental` 모드로 실행합니다.
