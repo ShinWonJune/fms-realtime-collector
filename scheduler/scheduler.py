@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 '''
 
-docker-compose up -d backfill-scheduler
+docker-compose up backfill-scheduler
 
 
 3일에 한번씩 docker-compose run --rm backfill-loader python app.py --mode incremental 실행

@@ -1,177 +1,66 @@
-# FMS 실시간 데이터 수집기
+# FMS Realtime Collector - Backfill System
 
-Kafka에서 실시간으로 데이터를 수집하여 MinIO에 Parquet 형태로 저장하는 시스템입니다.
+이 프로젝트는 Kafka의 실시간 데이터를 주기적으로 수집하여 MinIO 스토리지에 Parquet 포맷으로 적재하는 백필(Backfill) 및 아카이빙 시스템입니다.
 
-## 🏗️ 아키텍처 개요
+주로 두 가지 핵심 파이썬 애플리케이션인 `app.py` (Backfill Loader)와 `scheduler.py` (Scheduler)로 구성되어 있습니다.
 
-### 핵심 컴포넌트
-- **실시간 수집기 (Real-time Collector)**: 1분마다 Kafka 데이터를 수집하여 분 단위 Parquet 파일로 저장
-- **배치 병합기 (Batch Merger)**: 정해진 시간에 작은 파일들을 큰 단위로 병합
-- **과거 데이터 적재기 (Backfill Loader)**: 최초 한 번 Kafka의 모든 과거 데이터를 적재
+## 주요 컴포넌트
 
-### MinIO 버킷 구조
-```
-fms-data/
-├── minute/          # 분 단위 파일 (YYYYMMDD_HHMM.parquet)
-│   └── 20250612_1122.parquet
-├── hour/            # 시간 단위 파일 (YYYYMMDD_HH_HH+1.parquet)
-│   └── 20250612_00_01.parquet
-├── day/             # 일 단위 파일 (YYYYMMDD.parquet)
-│   └── 20250608.parquet
-└── week/            # 주 단위 파일 (YYYYMMDD_YYYYMMDD.parquet)
-    └── 20250601_20250607.parquet
-```
+### 1. Backfill Loader (`backfill-loader/app.py`)
 
-## 🚀 배포 방법
+Kafka 토픽(`fms-temphum`)에서 메시지를 읽어 MinIO 버킷에 저장하는 핵심 로직을 담당합니다.
 
-### 1. 사전 요구사항
-- Kubernetes 클러스터 (kubectl 명령어 사용 가능)
-- Docker 환경
-- Kafka 클러스터 실행 중
-- MinIO 서버 실행 중
+#### 주요 기능
+- **데이터 수집**: Kafka Consumer를 통해 메시지를 대량으로 소비합니다.
+- **데이터 처리**:
+  - 메시지 내부의 타임스탬프를 추출합니다.
+  - UTC 시간을 KST(한국 표준시)로 변환합니다.
+- **데이터 저장**: 처리된 데이터를 `Parquet` 포맷으로 변환하여 MinIO에 업로드합니다.
+- **실행 모드 (`--mode`)**:
+  - **`incremental` (증분 모드)**: 
+    - **가장 중요한 모드**입니다.
+    - Kafka Consumer Group의 마지막 커밋된 오프셋(Offset)부터 데이터를 읽기 시작합니다.
+    - 이전에 작업이 끝난 지점부터 이어서 데이터를 수집하므로, 중복 수집을 방지하고 누락 없이 데이터를 적재할 수 있습니다.
+    - 스케줄러에 의해 주기적으로 실행될 때 사용됩니다.
+  - **`fresh`**: 처음부터 모든 데이터를 다시 수집합니다.
+  - **`continue`**: 특정 날짜(`--from-date`)부터 수집하거나 이어서 수집합니다.
 
-### 2. 설정 변경
-`k8s/configmap.yaml` 파일에서 환경에 맞게 설정을 변경하세요:
-```yaml
-data:
-  KAFKA_BROKERS: "your-kafka-service:9092"
-  KAFKA_TOPIC: "your-topic-name"
-  MINIO_ENDPOINT: "your-minio-service:9000"
-```
+### 2. Scheduler (`scheduler/scheduler.py`)
 
-### 3. 배포 실행
-```bash
-# Linux/Mac
-./deploy.sh
+Backfill Loader를 정해진 주기에 따라 자동으로 실행시켜주는 관리자 역할을 합니다.
 
-# Windows
-deploy.bat
-```
+#### 동작 방식
+- **Python `schedule` 라이브러리**를 사용하여 주기적인 작업을 관리합니다.
+- 기본 설정으로 **3일에 한 번씩** 백필 작업을 트리거합니다.
+- 작업 실행 시 `subprocess`를 통해 Docker 컨테이너 내부에서 다음 명령어를 실행합니다:
+  ```bash
+  python /app/app.py --mode incremental
+  ```
+- **초기 실행 옵션**: 컨테이너 시작 시 환경변수 `RUN_ON_START=true`가 설정되어 있다면, 스케줄 대기 시간 없이 즉시 백필 작업을 1회 실행합니다.
 
-### 4. 과거 데이터 적재 (선택사항)
-```bash
-kubectl apply -f k8s/backfill-loader-job.yaml
-kubectl logs -f job/backfill-loader
-```
+## 전체 시스템 워크플로우
 
-## 📊 모니터링
+1. **스케줄러 시작**: `backfill-scheduler` 컨테이너가 실행되면 `scheduler.py`가 구동됩니다.
+2. **주기적 실행**: 
+   - 매 3일마다(또는 `RUN_ON_START` 설정 시 즉시) 스케줄러가 깨어납니다.
+   - 스케줄러는 `app.py`를 `incremental` 모드로 실행합니다.
+3. **데이터 적재**:
+   - `app.py`는 지난번 실행 이후 Kafka에 쌓인 새로운 데이터들을 가져옵니다.
+   - 데이터를 메모리에서 처리한 후 MinIO에 Parquet 파일로 저장합니다.
+4. **종료**: 작업이 완료되면 `app.py` 프로세스는 종료되고, 스케줄러는 다음 주기가 될 때까지 대기합니다.
 
-### 실시간 수집기 상태 확인
-```bash
-kubectl logs -f deployment/realtime-collector
-kubectl get pods -l app=realtime-collector
-```
+## 환경 설정
 
-### 배치 병합기 상태 확인
-```bash
-kubectl get cronjobs
-kubectl describe cronjob batch-merger-hour
-kubectl logs job/batch-merger-hour-[job-id]
-```
+시스템 동작을 제어하기 위한 주요 환경 변수들입니다.
 
-### MinIO 데이터 확인
-MinIO 웹 콘솔에서 `fms-data` 버킷의 각 경로별 파일을 확인할 수 있습니다.
+| 변수명 | 설명 | 기본값 |
+|--------|------|--------|
+| `KAFKA_BROKERS` | Kafka 브로커 주소 |
+| `KAFKA_TOPIC` | 수집할 Kafka 토픽 | `fms-temphum` |
+| `KAFKA_GROUP_ID` | Consumer 그룹 ID | `backfill-loader` |
+| `MINIO_ENDPOINT` | MinIO 서버 주소 (URL 지원) |
+| `MINIO_BUCKET` | 저장할 MinIO 버킷 이름 | `fms-temphum` |
+| `RUN_ON_START` | 스케줄러 시작 시 즉시 실행 여부 | `true` |
 
-## ⚙️ 환경 변수
-
-### 공통 환경 변수
-- `KAFKA_BROKERS`: Kafka 브로커 주소 (예: "localhost:9092")
-- `KAFKA_TOPIC`: Kafka 토픽 이름 (예: "fms-data")
-- `MINIO_ENDPOINT`: MinIO 서버 주소 (예: "localhost:9000")
-- `MINIO_ACCESS_KEY`: MinIO 액세스 키
-- `MINIO_SECRET_KEY`: MinIO 시크릿 키
-- `MINIO_BUCKET`: MinIO 버킷 이름 (예: "fms-data")
-- `MINIO_SECURE`: HTTPS 사용 여부 (true/false)
-
-### 컴포넌트별 추가 환경 변수
-- `KAFKA_GROUP_ID`: Kafka 컨슈머 그룹 ID (컴포넌트별로 다름)
-
-## 🕐 스케줄링
-
-### 배치 병합기 실행 스케줄
-- **시간별 병합**: 매시 1분 (`1 * * * *`)
-- **일별 병합**: 매일 00시 5분 (`5 0 * * *`)
-- **주별 병합**: 매주 월요일 00시 10분 (`10 0 * * 1`)
-
-## 📁 프로젝트 구조
-
-```
-fms-realtime-collector/
-├── realtime-collector/          # 실시간 수집기
-│   ├── app.py
-│   ├── Dockerfile
-│   └── requirements.txt
-├── batch-merger/               # 배치 병합기
-│   ├── app.py
-│   ├── Dockerfile
-│   └── requirements.txt
-├── backfill-loader/           # 과거 데이터 적재기
-│   ├── app.py
-│   ├── Dockerfile
-│   └── requirements.txt
-├── k8s/                       # Kubernetes 리소스
-│   ├── configmap.yaml
-│   ├── realtime-collector-deployment.yaml
-│   ├── batch-merger-cronjobs.yaml
-│   └── backfill-loader-job.yaml
-├── deploy.sh                  # 배포 스크립트 (Linux/Mac)
-├── deploy.bat                 # 배포 스크립트 (Windows)
-└── README.md
-```
-
-## 🔧 트러블슈팅
-
-### 자주 발생하는 문제
-
-1. **Kafka 연결 실패**
-   - `KAFKA_BROKERS` 설정이 올바른지 확인
-   - Kafka 서비스가 실행 중인지 확인
-   - 네트워크 연결 상태 확인
-
-2. **MinIO 연결 실패**
-   - `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY` 설정 확인
-   - MinIO 서비스가 실행 중인지 확인
-   - 버킷 권한 설정 확인
-
-3. **Pod 재시작 반복**
-   - 로그 확인: `kubectl logs -f deployment/realtime-collector`
-   - 리소스 제한 확인 및 조정
-
-### 유용한 명령어
-
-```bash
-# 전체 상태 확인
-kubectl get all -l app=realtime-collector
-
-# 로그 확인
-kubectl logs -f deployment/realtime-collector
-kubectl logs job/batch-merger-hour-[job-id]
-
-# 설정 확인
-kubectl describe configmap fms-config
-kubectl describe secret fms-secrets
-
-# 수동 병합 작업 실행
-kubectl create job --from=cronjob/batch-merger-hour manual-merge-hour
-
-# 리소스 삭제
-kubectl delete -f k8s/
-```
-
-## 📈 성능 최적화
-
-### 리소스 조정
-각 컴포넌트의 리소스 요구사항에 따라 `k8s/*.yaml` 파일의 `resources` 섹션을 조정하세요.
-
-### 배치 크기 조정
-데이터 처리량에 따라 Kafka 컨슈머의 배치 크기나 타임아웃 설정을 조정할 수 있습니다.
-
-## 🔒 보안 고려사항
-
-1. **Secret 관리**: MinIO 자격 증명을 Kubernetes Secret으로 관리
-2. **네트워크 정책**: 필요에 따라 NetworkPolicy 설정
-3. **RBAC**: 서비스 계정에 최소 권한 부여
-
-## 📝 라이센스
-
-이 프로젝트는 MIT 라이센스를 따릅니다.
+---
+*Generated based on analysis of `app.py` and `scheduler.py`.*
